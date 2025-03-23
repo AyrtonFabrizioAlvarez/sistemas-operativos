@@ -174,7 +174,7 @@ Un módulo del kernel es un componente del sistema operativo que se puede cargar
 ### 14. ¿Qué es un parche del kernel? ¿Cuáles son las razones principales por las cuáles se deberían aplicar parches en el kernel? ¿A través de qué comando se realiza la aplicación de parches en el kernel?  
 Un parche del kernel es un conjunto de cambios, correcciones o mejoras al código fuente del kernel, que se aplican para solucionar problemas específicos, agregar nuevas funcionalidades o mejorar la seguridad del sistema operativo. Los parches pueden ser proporcionados por los desarrolladores del kernel o por otros contribuyentes y, por lo general, se distribuyen en forma de archivos diff que contienen las diferencias entre las versiones anterior y nueva del código.  
 
-Razones principales para aplicar parches en el kernel  
+Razones principales para aplicar parches en el kernel   
 
 | Razón                      | Descripción                                                                     |
 | -------------------------- | ------------------------------------------------------------------------------- |

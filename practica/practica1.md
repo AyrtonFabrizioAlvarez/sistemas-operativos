@@ -3,8 +3,8 @@
 ### 1.  ¿Qué es GCC?
 GCC es una colección de compiladores del proyecto GNU, utilizada para compilar programas en C, C++ y otros lenguajes. Realiza el proceso de conversión de código fuente a ejecutable en varias etapas y es esencial en entornos Unix/Linux, incluyendo la compilación del kernel de Linux.
 
-### 2.  ¿Qué es make y para que se usa? 
-make es una herramienta que automatiza la compilación y otras tareas en proyectos de software. Usa un Makefile para definir reglas y dependencias, recompilando solo lo necesario para optimizar el proceso.
+### 2.  ¿Qué es `make` y para que se usa? 
+`make` es una herramienta que automatiza la compilación y otras tareas en proyectos de software. Usa un Makefile para definir reglas y dependencias, recompilando solo lo necesario para optimizar el proceso.
 **Un Makefile tiene elementos clave:**
 - Reglas: Indican cómo generar archivos.
 - Dependencias: Archivos que deben estar actualizados.
@@ -199,7 +199,7 @@ Razones principales para aplicar parches en el kernel
   - Cuando se habilita Energy-aware Scheduling (EAS), el scheduler de Linux toma decisiones basadas en el consumo de energía y en las necesidades de rendimiento del proceso.
   - En general, cuando se despierta un proceso que no tiene una alta demanda de rendimiento, el scheduler tiende a asignarlo a los núcleos LITTLE, para minimizar el consumo de energía.
   - Sin embargo, si el proceso requiere un mayor rendimiento (por ejemplo, si es un proceso de alta carga), el scheduler lo puede asignar a los núcleos big, aunque esto aumentará el consumo energético.
-- **c.  ¿A qué tipo de dispositivos opinás que beneficia más esta característica? Ver https://docs.kernel.org/scheduler/sched-energy.html**  
+- **c.  ¿A qué tipo de dispositivos opinás que beneficia más esta característica?**  
   - Beneficia principalmente a dispositivos móviles (smartphones, tablets) y dispositivos IoT que requieren eficiencia energética.     
 ### 16. Investigue la system call memfd_secret() incorporada en el kernel 5.14 y explique brevemente con sus palabras 
 - **a.  ¿Cuál es su propósito?**  

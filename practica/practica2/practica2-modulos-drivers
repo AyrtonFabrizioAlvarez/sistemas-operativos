@@ -142,16 +142,200 @@ Si se agregan drivers que son necesarios para arrancar (por ejemplo, drivers de 
 - `init`: script principal que ejecuta el montaje y pasa el control al sistema raíz.  
 - Hooks o scripts para detectar dispositivos, montar, iniciar LVM/RAID, desbloquear cifrado, etc.  
 
-## Módulos y Drivers Práctica  
+## Módulos y Drivers Práctica Básica
+
+
+### 2.​ Crear el archivo Makefile con el siguiente contenido:
+`obj-m := memory.o`  
+**Responda lo siguiente:**  
+- **Explique brevemente cual es la utilidad del archivo Makefile.**
+  - `obj-m` indica que se está construyendo un módulo externo al kernel, no compilado dentro del árbol completo del kernel.
+  - `memory.o` es el archivo objeto que se generará al compilar `memory.c`.
+  - se está diciendo: "quiero construir un módulo del kernel llamado memory.ko a partir de memory.c".
+- **¿Para qué sirve la macro MODULE_LICENSE? ¿Es obligatoria?**
+  - `MODULE_LICENSE` declara la licencia del módulo del kernel.
+  - **No es obligatoria**, pero sin ella:
+    - El kernel se marca como tainted.
+    - No podés usar símbolos exportados bajo GPL.
+  - Es una buena práctica incluirla siempre, sobre todo si el módulo es libre.
 
 
 
+### 3.
+- **a.​ ¿Cuál es la salida del comando anterior?**  
+![ejercicio3](./practica2-ejercicio3.png)  
+**Esto indica que el compilador está:**    
+  - Compilando tu archivo .c en .o
+  - Generando metainformación
+  - Enlazando el archivo final .ko (kernel object)
+- **b.​ ¿Qué tipos de archivo se generan? Explique para qué sirve cada uno?.**  
+    **En el proceso se generan varios archivos. Los principales son:**  
 
+    | Archivo	     | Función                                                               |
+    | -------------- | --------------------------------------------------------------------- |
+    | memory.o       | Código objeto intermedio compilado a partir de memory.c.              |
+    | memory.mod.o   | Código objeto extendido con información de metadatos del módulo.      |
+    | memory.ko      | El módulo compilado final (Kernel Object), listo para cargar.         |
+    | modules.order  | Lista de módulos que deben ser instalados en orden.                   |
+    | Module.symvers | Tabla de símbolos exportados e importados, útil para enlazar módulos. |
 
-
-
+- **c.​ Con lo visto en la Práctica 1 sobre Makefiles, construya un Makefile de manera que si ejecuto:**
+  - `make`, nuestro módulo se compila
+  - `make clean`, limpia el módulo y el código objeto generado
+  - `make run`, ejecuta el programa
  
- 
- 
+
+### 4.​ 
+**Para qué sirven el comando insmod y el comando modprobe? ¿En qué sediferencian?**  
+- **`insmod` inserta un módulo al kernel manualmente.**  
+- **Necesitás pasarle el nombre exacto del archivo `.ko`, por ejemplo: `insmod memory.ko`.**  
+- **No resuelve dependencias automáticamente: si el módulo necesita otros, vos tenés que cargarlos primero.**  
+
+<br>
+
+- **`modprobe` busca el módulo por nombre, por ejemplo: `modprobe memory`:**
+- **Resuelve dependencias automáticamente.**
+- **Usa archivos como /lib/modules/$(uname -r)/modules.dep para saber qué módulos cargar primero.**
+- **También permite remover módulos con modprobe -r.**
+
+### 5.​ Ahora ejecutamos: `$ lsmod | grep memory`
+- **a.​ ¿Cuál es la salida del comando? Explique cuál es la utilidad del comando lsmod.**
+  - `lsmod` muestra la lista de todos los módulos cargados actualmente en el kernel.
+  - ![ejercicio3](./practica2-ejercicio5.png)
+  - `memory` - nombre del módulo
+  - `8192` - tamaño del módulo en bytes
+  - `0` - Veces que está en uso (referencias de otros módulos)
+- **b.​ ¿Qué información encuentra en el archivo /proc/modules?**  
+  - Archivo virtual que contiene la lista completa de módulos cargados.
+  - contiene datos como `nombre`, `tamaño`, `usos`, `dependencias`, `estado`, `dirección`.
+- **c.​ Si ejecutamos more /proc/modules encontramos los siguientes fragmentos ¿Quéinformación obtenemos de aquí?:**
+  - `memory 8192 0 - Live 0x0000000000000000 (OE)`
+    | Campo	 | Significado                                                           |
+    | ------ | --------------------------------------------------------------------- |
+    | memory |	Nombre del módulo cargado                                            |
+    | 8192	 | Tamaño en bytes del módulo                                            |
+    | 0	     | Veces que el módulo está siendo usado (referencias por otros módulos) |
+    | -	     | No tiene dependencias                                                 |
+    | Live	 | El módulo está activo (no está en proceso de carga ni de descarga)    |
+    | 0x000  | Dirección base en memoria donde fue cargado                           |
+    | (OE)	 | Opciones del módulo:                                                  |
+  - `O` - Módulo fue cargado manualmente (no automáticamente por el sistema).
+  - `E` - Exporta símbolos (funciones/variables) accesibles para otros módulos.
+- **d.​ ¿Con qué comando descargamos el módulo de la memoria?**
+  - `rmmod memory`: Si el módulo tiene dependencias cargadas, hay que descargar primero los módulos que dependen de él.
+  - `modprobe -r memory`: Este comando también verifica dependencias, y puede ser más seguro en sistemas más complejos.
 
 
+
+### 8.​ Responda lo siguiente:
+- **a.​ ¿Para qué sirven las funciones module_init y module_exit?. ¿Cómo haría para ver la información del log que arrojan las mismas?.**
+  - **`module_init(hello_init)`:**
+    - Especifica qué función se ejecuta al cargar el módulo.
+  - **`module_exit(hello_exit)`:**
+    - Define la función a ejecutar cuando el módulo se descarga.
+  - **¿Cómo ver los mensajes del log?:**
+    - Los mensajes generados con printk() no se ven por pantalla directa, sino que van al log del kernel. Para verlos usamos el comando `dmesg`
+
+- **b.​ Hasta aquí hemos desarrollado, compilado, cargado y descargado un módulo en nuestro kernel. En este punto y sin mirar lo que sigue. ¿Qué nos falta para tener un driver completo?.**  
+**Este código es un módulo básico, pero no hace nada relacionado con hardware. Para ser un driver, debe:**
+  - Tener lógica para interactuar con dispositivos reales (ej: disco, teclado, etc.).
+  - Registrar una interfaz (por ejemplo, crear un archivo en /dev/, o registrar una estructura file_operations).
+  - Implementar funciones para que el sistema pueda leer/escribir desde el dispositivo.
+  - Posiblemente manejar interrupciones, registros o buses de hardware.
+
+
+- **c.​ Clasifique los tipos de dispositivos en Linux. Explique las características de cada uno.**
+
+    | Tipo de dispositivo |	Características principales	                                                 | Ejemplos                  |
+    | ------------------- | ---------------------------------------------------------------------------- | ------------------------- |
+    | De carácter         |	Acceso secuencial (byte a byte), usa `/dev`, funciones tipo `read`, `write`. | `/dev/tty` `/dev/random`  |
+    | De bloque	          | Acceso por bloques, ideal para almacenamiento, usa cache, lectura aleatoria. | `/dev/sda` `/dev/mmcblk0` |
+    | De red	          | Acceso a través del stack de red, se manejan con sockets.	                 | `eth0` `wlan0`            |
+
+
+
+## Módulos y Drivers Práctica Básica
+
+### 2.​ Responda lo siguiente:
+- **a.​ ¿Para qué sirve la estructura ssize_t y memory_fops? ¿Y las funciones register_chrdev y unregister_chrdev?**  
+  - `ssize_t`:
+    - Es un tipo de dato usado para indicar la cantidad de bytes leídos o escritos por funciones como `read()` o `write()`.
+    - Si devuelve un valor negativo, indica error.
+    - Si devuelve 0 o más, representa cantidad de bytes procesados.
+  - `memory_fops`:
+    - Es una estructura `file_operations` que define qué funciones del módulo se invocan cuando un proceso realiza operaciones sobre el dispositivo (como `open`, `read`, `write`, `release`, etc.).
+    - Es como el "vínculo" entre las llamadas del espacio de usuario (`read(fd), write(fd)) y el código del driver.
+  - `register_chrdev`:
+    - Registra un dispositivo de carácter ante el sistema.
+    - Le indica al kernel que, cuando un proceso haga operaciones sobre el major number que le pasemos, debe usar nuestra estructura file_operations.
+    ```C
+    int register_chrdev(unsigned int major, const char *name, const struct file_operations *fops);
+    ```
+  - `unregister_chrdev`:
+    - Desregistra el dispositivo del sistema al descargar el módulo, liberando el major number y evitando que se mantenga un dispositivo "fantasma".
+
+- **b.​ ¿Cómo sabe el kernel que funciones del driver invocar para leer y escribir al dispositivo?**  
+  - Lo sabe gracias a la estructura `file_operations` que se pasa en `register_chrdev()`.
+  - Cuando se hace un `read()` o `write()` desde user space, el kernel busca el major number del dispositivo, ve cuál file_operations está registrada para ese número, y llama a la función read o write de esa estructura.
+- **c.​ ¿Cómo se accede desde el espacio de usuario a los dispositivos en Linux?**  
+  - A través de archivos especiales en `/dev`, como `/dev/memory`, `/dev/sda`, etc.
+- **d.​ ¿Cómo se asocia el módulo que implementa nuestro driver con el dispositivo?**  
+  - El módulo se registra como manejador de un major number.
+  - Cuando se crea el archivo en /dev con ese major, el kernel sabe que debe redirigir las operaciones a ese módulo.
+    ```C
+    register_chrdev(60, "memory", &memory_fops);
+    ```
+- **e.​ ¿Qué hacen las funciones copy_to_user y copy_from_user?**  
+  - En el kernel no se puede acceder directamente a la memoria del espacio de usuario.
+  - Estas funciones permiten **copiar datos entre espacio de usuario y espacio kernel**, con seguridad.
+    - `copy_from_user(dest_kernel, src_user, size)`:
+      - Copia size bytes desde un puntero en espacio de usuario a espacio kernel.
+    - `copy_to_user(dest_user, src_kernel, size)`:
+      - Copia size bytes desde un puntero en espacio kernel a espacio de usuario.
+
+### 4. 
+- **¿Para qué sirve el comando mknod? ¿qué especifican cada uno de sus parámetros?.**
+  - El comando mknod se utiliza para crear archivos de dispositivo especiales en el directorio `/dev`. Estos archivos permiten a los programas interactuar con el hardware a través de llamadas estándar como `open`, `read`, `write`, etc.
+    ```bash
+    mknod <archivo> <tipo> <major> <minor>
+    ```
+
+    ```bash
+    mknod /dev/memory c 60 0
+    ```
+  - `/dev/memory`: ruta y nombre del archivo de dispositivo que se crea.
+  - `c`: indica que es un dispositivo de carácter (también puede ser `b` para dispositivos de bloque como discos).
+  - `60`: major number. Identifica el driver responsable de manejar el dispositivo.
+  - `0`: minor number. Se usa para distinguir entre múltiples dispositivos que usa el mismo driver.
+  
+- **¿Qué son el “major” y el “minor” number? ¿Qué referencian cada uno?.**
+  - **Major number:**
+    - Es un número que identifica al driver que maneja el dispositivo.
+    - Cuando se hace una operación sobre un archivo en /dev, el kernel busca el driver registrado con ese major number y le delega la operación.
+  - **Minor number:**
+    - Permite distinguir entre varios dispositivos controlados por el mismo driver.
+
+### 7.​
+- **a.​ ¿Qué salida tiene el anterior comando?, ¿Porque? (ayuda: siga la ejecución de las funciones memory_read y memory_write y verifique con dmesg)**
+  - el comando anterior tiene como resultado imprimir `f`, ya que se lee caracter a caracter **sobreescribiendo** el buffer, pro eso "se queda" con el último `f`
+- **b.​ ¿Cuántas invocaciones a memory_write se realizaron?**
+  - el comando `memory_write` se invocó 6 veces, uno por cada letra del parametro "abcdef"
+- **c.​ ¿Cuál es el efecto del comando anterior? ¿Por qué?**
+  - el comando anterior tiene como resultado imprimir `f`, ya que se lee caracter a caracter **sobreescribiendo** el buffer, pro eso "se queda" con el último `f`
+- **d.​ Hasta aquí hemos desarrollado un ejemplo de un driver muy simple pero de manera completa, en nuestro caso hemos escrito y leído desde un dispositivo que en este caso es la propia memoria de nuestro equipo.**
+  - Se compila como un módulo (.ko)
+  - Se carga dinámicamente (insmod)
+  - Crea un dispositivo /dev/memory con mknod
+  - Permite escribir (aunque solo guarda 1 byte)
+  - Permite leer (una única vez ese byte)
+- **e.​ En el caso de un driver que lee un dispositivo como puede ser un file system, un dispositivo usb,etc. ¿Qué otros aspectos deberíamos considerar que aquí hemos omitido? ayuda: semáforos, ioctl, inb,outb.**
+  - Un driver real necesita control de concurrencia, mecanismos como `ioctl`, y acceso directo a hardware usando instrucciones específicas.
+  - **Sincronización**: evitar condiciones de carrera entre procesos concurrentes. Se usan:
+    - `semaforos`
+    - `spinlocks`
+    - `mutex`
+  - **Control avanzado del dispositivo**:
+    - `ioctl`: permite enviar comandos personalizados desde espacio de usuario.
+  - **Acceso a puertos o memoria específica**:
+    - `inb()` / `outb()` → para dispositivos que se comunican por puertos I/O.
+    - `ioremap()` / `readb()` / `writeb()` → para acceso a memoria mapeada.

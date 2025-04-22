@@ -172,3 +172,158 @@ Sin embargo, en modelos híbridos (como M:N, donde múltiples ULT se asignan a m
     - El módulo `multiprocessing` crea procesos en vez de hilos, permitiendo ejecución concurrente real en tareas pesadas.
   - **Ruby:**
     - Para tareas CPU-intensivas también se suele usar `fork()` o herramientas que crean procesos independientes.
+
+
+
+## Threads Practica
+
+### 3.​ Resuelva y responda utilizando el contenido del directorio practica3/01-strace:
+
+**b. Conteste en qué mecanismo de concurrencia las distintas tareas:**
+  1. Comparten el mismo PID y THREAD_ID
+     - `ULT` ó **User Level Thread**
+  2. Comparten el mismo PID pero con diferente THREAD_ID
+     - `KLT` ó **Kernel Level Thread**
+  3. Tienen distinto PID
+     - Subproceso ya que utiliza `fork()`
+
+**c.​ Ejecute cada programa usando strace (strace ./nombre_programa > /dev/null) y responda:**
+1.  ¿En qué casos se invoca a la systemcall clone o clone3 y en cuál no? ¿Por qué?
+    - `subprocess`
+      - Se invoca la syscall clone, porque `fork()` internamente usa `clone()` con flags mínimos, que replican el comportamiento de un proceso hijo independiente
+      - Se usa para crear un nuevo proceso, con su propio espacio de memoria y PID distinto
+    - `klt`
+      - Se invoca la syscall `clone3()`, más moderna y flexible
+      - Es utilizada por `pthread_create()` en versiones recientes de glibc
+      - Los flags que se pasan indican la creación de un hilo del mismo proceso
+    - `ult`
+      - No se invoca ni `clone()` ni `clone3()` para crear nuevos "hilos"
+      - Los hilos de usuario (ULT) son gestionados por el espacio de usuario: se multiplexan dentro de un solo hilo del sistema
+
+2.  ​Observe los flags que se pasan al invocar a clone o clone3 y verifique en qué caso se usan los flags CLONE_THREAD y CLONE_VM.
+    - `subprocess`
+      - utiliza `fork()` y por lo tanto `clone()`, donde se pasan flags mínimos
+      - Esto corresponde a la semántica de proceso separado: **memoria no compartida y PID diferente.**
+    - `klt`
+      - utiliza `clone3()`, se observan los siguientes flags:
+        - **CLONE_THREAD:** indica que el hilo es parte del mismo grupo de hilos del proceso.
+        - **CLONE_VM:** comparten el espacio de memoria virtual.
+        - Suelen aparecer otros como **CLONE_FILES**, **CLONE_FS**, **CLONE_SIGHAND**, todos necesarios para compartir recursos de proceso entre hilos.
+    - `ult`
+        - No hay flags ni syscalls para analizar en cuanto a clone, porque todo está en espacio de usuario.
+
+3.  ​Investigue qué significan los flags CLONE_THREAD y CLONE_VM usando la manpage de clone y explique cómo se relacionan con las diferencias entre procesos e hilos.
+  - `CLONE_THREAD`: El nuevo hilo pertenece al mismo grupo de hilos que el padre (mismo PID visible desde el sistema).
+  - `CLONE_VM`: Ambos hilos comparten el mismo espacio de memoria virtual.
+  - Esto implica que:
+    - Un proceso (como en subprocess) no tiene estos flags, por lo que se ejecuta en su propio espacio de memoria y tiene PID distinto.
+    - Un hilo (como en klt) sí los tiene, y por eso puede compartir datos y comunicarse sin necesidad de IPC.
+    - En ult, esto se emula sin ayuda del kernel, por lo que no se usan estos flags.
+
+4.  ​printf() eventualmente invoca la syscall write (con primer argumento 1, indicando que el file descriptor donde se escribirá el texto es STDOUT). Vea la salida de strace y verifique qué invocaciones a write(1, ...) ocurren en cada caso.
+    - `subprocess`
+      - `write(1, "Parent process: PID = 6579, THRE"..., 45) = 45`
+      - Se observa una única invocación a `write(1, ...)`, realizada por el proceso padre antes de terminar. El proceso hijo creado por clone probablemente también realiza una llamada a printf, pero como lo ejecutamos redirigiendo la salida a /dev/null, no vemos la traza de sus syscalls write en esta salida.
+    - `klt`
+      - `write(1, "Parent process: PID = 6586, THRE"..., 88) = 88`
+      - Similar al caso anterior, vemos una única invocación a `write(1, ...)` por el hilo principal antes de la terminación del proceso. La salida del hilo hijo (si lo hay) no se captura debido a la redirección a /dev/null.
+    - `ult`
+      - `write(1, "Parent process: PID = 6593, THRE"..., 138) = 138`
+      - De nuevo, se observa una única llamada a write(1, ...) por el hilo principal. La actividad de los hilos de usuario, incluyendo sus posibles llamadas a printf que derivarían en write(1, ...), no se rastrea a nivel de syscall con esta invocación de strace
+
+
+5.  Pruebe invocar de nuevo strace con la opción -f y vea qué sucede respecto a las invocaciones a write(1, …). Investigue qué es esa opción en la manpage
+de strace. ¿Por qué en el caso del ULT se pude ver la invocación a write(1,…) por parte del thread hijo aún sin usar -f?
+    - `strace -f`: -f (o --follow-forks) hace que strace rastree no solo el proceso inicial, sino también todos los procesos hijos creados por las syscalls fork, vfork, o clone
+    - `subprocess`
+      - `[pid  7391] write(1, "Parent process: PID = 7390, THRE"..., 89) = 89`
+      - `write(1, "Parent process: PID = 7390, THRE"..., 45) = 45`
+    - `klt`
+      - `[pid  7407] exit(0)                     = ?`
+      - `write(1, "Parent process: PID = 7406, THRE"..., 88) = 88`
+      - En este caso el hijo no realiza un printf(), pero vemos parte de las syscalls que realiza
+    - `ult`
+      - `write(1, "Parent process: PID = 7425, THRE"..., 138) = 138`
+      - En este caso strace ve a todos los hilos como un unico proceso principal
+
+
+### 4.​ Resuelva y responda utilizando el contenido del directorio practica3/02-memory:
+**c.​ Observe qué pasa con la modificación a la variable number en cada caso. ¿Por qué suceden cosas distintas en cada caso?**
+    - `subprocess`: Tienen espacios de memoria separados, por lo que las modificaciones en un proceso no afectan a otros.
+    - `klt`: Comparten el mismo espacio de memoria dentro de un proceso, lo que permite que las modificaciones realizadas por un hilo sean visibles para otros hilos del mismo proceso.
+    - `ult`: También comparten el mismo espacio de memoria del proceso del kernel subyacente, lo que resulta en un comportamiento similar al de los hilos de kernel en términos de visibilidad de las modificaciones a las variables compartidas.
+
+
+
+### 5.​ El directorio practica3/03-cpu-bound contiene programas en C y en Python que ejecutan una tarea CPU-Bound (calcular el enésimo número primo).
+**b.​ Ejecute los distintos ejemplos con make (usar make help para ver cómo) y observe cómo aparecen los resultados, cuánto tarda cada thread y cuanto tarda el programa completo en finalizar.**
+- `run_klt`: tarda apenas más que el thread más lento **(47.96sec) se logra paralelismo**
+- `run_ult`: tarda la suma de todos sus threads **(177.0sec) no se logra paralelismo**
+- `run_klt_py`: tarda apenas más que el thread más lento **(323.96sec) no se logra paralelismo**
+  - los hilos están compitiendo por el `GIL`, cambiando de contexto constantemente. El overhead del cambio de contexto entre hilos hace que el rendimiento se degrade más que si solo uno trabajara a la vez (ult).
+- `run_ult_py`: tarda la suma de todos sus threads **(235.39sec) no se logra paralelismo**
+- `run_klt_py_nogil`: NO ME FUNCIONA
+  
+**c.​ ¿Cuántos threads se crean en cada caso?**  
+- `run_klt`: ejecuta 6 hilos cada uno con un PID distinto, todos los cpu al 100% **se logra paralelizar**
+- `run_ult`: ejecuta todo bajo el mismo PID, con un procesador al 100% **no se logra paralelizar**
+- `run_klt_py`: ejecuta 6 hilos cada uno con un PID distinto, todos los cpu al 25% **no se logra paralelizar** 
+  - los hilos están compitiendo por el `GIL`, cambiando de contexto constantemente. El overhead del cambio de contexto entre hilos hace que el rendimiento se degrade más que si solo uno trabajara a la vez (ult).
+- `run_ult_py`: ejecuta todo bajo el mismo PID, con un procesador al 100% **no se logra paralelizar**
+- `run_klt_py_nogil`: NO ME FUNCIONA
+  
+**d.​ ¿Cómo se comparan los tiempos de ejecución de los programas escritos en C (ult y klt)?**  
+  - En una tarea CPU-Bound, los ULT en C no pueden correr en paralelo realmente porque están gestionados por el usuario y comparten un único hilo del sistema operativo.
+  - En cambio, los KLT en C pueden correr en paralelo si hay más de un núcleo disponible.
+
+**e.​ ¿Cómo se comparan los tiempos de ejecución de los programas escritos en Python (ult.py y klt.py)?**  
+  - Aunque `klt.py` use `threading.Thread`, el `GIL` de Python impide que múltiples hilos ejecuten código Python a la vez.
+  - Por lo tanto, tanto `ult.py` como `klt.py` ejecutan los hilos secuencialmente.
+
+**f.​ Modifique la cantidad de threads en los scripts Python con la variable NUM_THREADS para que en ambos casos se creen solamente 2 threads, vuelva a ejecutar y comparar los tiempos. ¿Nota algún cambio? ¿A qué se debe?**  
+- `run_klt_py`: tarda apenas más que el thread más lento **(111.87sec)**
+  - tarda menso porque se generan menos context switch debido a tener menos threads, menor competencia por el `GIL` por eso mejora el rendimiento
+- `run_ult_py`: tarda la suma de todos sus threads **(95.07sec)**
+  - al tener menor cantidad de hilos lleva menor trabajo coordinarlos ya que ult es en espacio de usuario
+
+**g.​ ¿Qué conclusión puede sacar respecto a los ULT en tareas CPU-Bound?**  
+  - Los ULT no permiten aprovechar múltiples núcleos, ya que se ejecutan en espacio de usuario y el kernel ve solo un hilo.
+  - Para tareas que requieren mucho procesamiento, no es eficiente.
+  - Los KLT permiten paralelismo real, por eso son preferidos en CPU-Bound.
+
+
+### 6.​ El directorio practica3/04-io-bound contiene programas en C y en Python que ejecutan una tarea que simula ser IO-Bound (tiene una llamada a sleep lo que permite interleaving de forma similar al uso de IO).
+**b.​ Ejecute los distintos ejemplos con make (usar make help para ver cómo) y observe cómo aparecen los resultados, cuánto tarda cada thread y cuanto tarda el programa completo en finalizar.**  
+- `run_klt`: tarda apenas más que el thread más lento **(10.02sec)**
+- `run_ult`: tarda apenas más que el thread más lento **(10.03sec)**
+- `run_klt_py`: **(10.00sec)**
+- `run_ult_py`: **(10.02sec)**
+- `run_klt_py_nogil`: NO ME FUNCIONA
+
+- Ambos modelos **(KLT y ULT) permiten aprovechar el interleaving en tareas IO-Bound**.
+- El tiempo total no se multiplica por la cantidad de hilos gracias a ese comportamiento.
+- En estos casos, no hay pelea por el GIL en Python, porque **sleep() libera el GIL automáticamente**.
+
+**c.​ ¿Cómo se comparan los tiempos de ejecución de los programas escritos en C (ult y klt)?**  
+- los hilos no se ejecutan secuencialmente, sino que **hay interleaving eficiente**.
+- En el caso de `klt`, los hilos son gestionados por el sistema operativo y cuando hacen sleep, la CPU se libera automáticamente.
+- En el caso de `ult`, el sistema de ULT implementado coopera correctamente: el sleep no bloquea el scheduler de ULTs, por lo que los 5 hilos cooperan y se intercalan sin problema.
+
+**d.​ ¿Cómo se comparan los tiempos de ejecución de los programas escritos en Python (ult.py y klt.py)?**  
+- Tanto `ult.py` como `klt.py` completan en ~10s. En tareas IO-Bound, Python maneja bien la concurrencia gracias a que **sleep libera el GIL y permite interleaving**.
+
+**e.​ ¿Qué conclusión puede sacar respecto a los ULT en tareas IO-Bound?**  
+- Los ULTs (User-Level Threads) son **eficientes para tareas IO-Bound**.
+- Cuando las tareas liberan voluntariamente el control (como con sleep), los **ULTs permiten interleaving sin bloqueo**.
+- No necesitan intervención del sistema operativo ni múltiples núcleos para ser concurrentes.
+- Además, los ULTs tienen menor overhead que los KLTs (más livianos, más rápidos de crear/cambiar).
+- Son especialmente útiles en entornos donde se manejan muchas tareas en paralelo con esperas (por ejemplo, servidores web o clientes concurrentes).
+
+
+
+### 7.​ Diríjase nuevamente en la terminal a practica3/03-cpu-bound y modifique klt.py de forma que vuelva a crear 5 threads.
+**b.​ Ejecute una versión de Python que tenga el GIL deshabilitado usando: `make run_klt_py_nogil` (esta operación tarda la primera vez ya que necesita descargar un container con una versión de Python compilada explícitamente con el GIL deshabilitado).**
+**c.​ ¿Cómo se comparan los tiempos de ejecución de klt.py usando la versión normal de Python en contraste con la versión sin GIL?**
+**d.​ ¿Qué conclusión puede sacar respecto a los KLT con el GIL de Python en tareas CPU-Bound?**
+
+
